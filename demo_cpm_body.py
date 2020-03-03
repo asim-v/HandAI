@@ -15,7 +15,7 @@ from models.nets import cpm_body_slim
 FLAGS = tf.app.flags.FLAGS
 tf.app.flags.DEFINE_string('DEMO_TYPE',
                            # default_value='test_imgs/roger.png',
-                           default_value='test_imgs/single_gym.mp4',
+                           default_value='MULTI',
                            # default_value='SINGLE',
                            docstring='MULTI: show multiple stage,'
                                      'SINGLE: only last stage,'

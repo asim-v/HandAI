@@ -1,6 +1,6 @@
-# For single hand and no body part in the picture
+# Mano única sin cuerpo
 # ======================================================
-
+import serial
 import tensorflow as tf
 from models.nets import cpm_hand_slim
 import numpy as np
@@ -10,11 +10,21 @@ import time
 import math
 import sys
 
-"""Parameters
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+from matplotlib import style
+
+import re
+
+style.use('fivethirtyeight')
+fig = plt.figure()
+ax1 = fig.add_subplot(1,1,1)
+
+"""Parámetros
 """
 FLAGS = tf.app.flags.FLAGS
 tf.app.flags.DEFINE_string('DEMO_TYPE',
-                           default_value='test_imgs/longhand.jpg',
+                           default_value='MULTI',
                            # default_value='SINGLE',
                            docstring='MULTI: show multiple stage,'
                                      'SINGLE: only last stage,'
@@ -52,12 +62,7 @@ tf.app.flags.DEFINE_string('color_channel',
                            docstring='')
 
 # Set color for each finger
-joint_color_code = [[139, 53, 255],
-                    [0, 56, 255],
-                    [43, 140, 237],
-                    [37, 168, 36],
-                    [147, 147, 0],
-                    [70, 17, 145]]
+joint_color_code = [[116, 202, 0], [255, 199, 0], [212, 115, 18], [218, 87, 219], [108, 108, 255], [185, 238, 110]]
 
 
 limbs = [[0, 1],
@@ -87,6 +92,19 @@ if sys.version_info.major == 3:
 else:
     PYTHON_VERSION = 2
 
+def finduino():
+  print('Searching arduino...\n')  
+  for i in range(16):
+    try:
+      arduino = serial.Serial('COM'+str(i), 9600)
+      print("Arduino found at: " + 'COM'+str(i))
+      return arduino
+      break
+    except :pass
+
+arduino = finduino()
+memo = open('mem.txt','w+')
+tempo = 0
 
 def main(argv):
     tf_device = '/gpu:0'
@@ -127,7 +145,7 @@ def main(argv):
     for variable in tf.trainable_variables():
         with tf.variable_scope('', reuse=True):
             var = tf.get_variable(variable.name.split(':0')[0])
-            print(variable.name, np.mean(sess.run(var)))
+            #print(variable.name, np.mean(sess.run(var)))
 
     if not FLAGS.DEMO_TYPE.endswith(('png', 'jpg')):
         cam = cv2.VideoCapture(FLAGS.cam_num)
@@ -145,7 +163,6 @@ def main(argv):
         kalman_filter_array = None
 
     with tf.device(tf_device):
-
         while True:
             t1 = time.time()
             if FLAGS.DEMO_TYPE.endswith(('png', 'jpg')):
@@ -154,7 +171,7 @@ def main(argv):
                 test_img = cpm_utils.read_image([], cam, FLAGS.input_size, 'WEBCAM')
 
             test_img_resize = cv2.resize(test_img, (FLAGS.input_size, FLAGS.input_size))
-            print('img read time %f' % (time.time() - t1))
+            #print('img read time %f' % (time.time() - t1))
 
             if FLAGS.color_channel == 'GRAY':
                 test_img_resize = np.dot(test_img_resize[..., :3], [0.299, 0.587, 0.114]).reshape(
@@ -179,8 +196,10 @@ def main(argv):
                 # Show visualized image
                 demo_img = visualize_result(test_img, FLAGS, stage_heatmap_np, kalman_filter_array)
                 cv2.imshow('demo_img', demo_img.astype(np.uint8))
-                if cv2.waitKey(0) == ord('q'): break
-                print('fps: %.2f' % (1 / (time.time() - t1)))
+                if cv2.waitKey(0) == ord('q'): 
+                    arduino.close()
+                    break
+                #print('fps: %.2f' % (1 / (time.time() - t1)))
             elif FLAGS.DEMO_TYPE == 'MULTI':
 
                 # Inference
@@ -195,7 +214,7 @@ def main(argv):
                 demo_img = visualize_result(test_img, FLAGS, stage_heatmap_np, kalman_filter_array)
                 cv2.imshow('demo_img', demo_img.astype(np.uint8))
                 if cv2.waitKey(1) == ord('q'): break
-                print('fps: %.2f' % (1 / (time.time() - t1)))
+                #print('fps: %.2f' % (1 / (time.time() - t1)))
 
 
             elif FLAGS.DEMO_TYPE == 'SINGLE':
@@ -208,9 +227,9 @@ def main(argv):
 
                 # Show visualized image
                 demo_img = visualize_result(test_img, FLAGS, stage_heatmap_np, kalman_filter_array)
-                cv2.imshow('current heatmap', (demo_img).astype(np.uint8))
+                cv2.imshow('Mapa de calor', (demo_img).astype(np.uint8))
                 if cv2.waitKey(1) == ord('q'): break
-                print('fps: %.2f' % (1 / (time.time() - t1)))
+                #print('fps: %.2f' % (1 / (time.time() - t1)))
 
 
             elif FLAGS.DEMO_TYPE == 'HM':
@@ -220,7 +239,7 @@ def main(argv):
                 stage_heatmap_np = sess.run([model.stage_heatmap[FLAGS.stages - 1]],
                                             feed_dict={'input_image:0': test_img_input,
                                                        'center_map:0': test_center_map})
-                print('fps: %.2f' % (1 / (time.time() - t1)))
+                #print('fps: %.2f' % (1 / (time.time() - t1)))
 
                 demo_stage_heatmap = stage_heatmap_np[len(stage_heatmap_np) - 1][0, :, :, 0:FLAGS.joints].reshape(
                     (FLAGS.hmap_size, FLAGS.hmap_size, FLAGS.joints))
@@ -323,7 +342,7 @@ def visualize_result(test_img, FLAGS, stage_heatmap_np, kalman_filter_array):
     demo_stage_heatmaps = []
     if FLAGS.DEMO_TYPE == 'MULTI':
         for stage in range(len(stage_heatmap_np)):
-            demo_stage_heatmap = stage_heatmap_np[stage][0, :, :, 0:FLAGS.joints].reshape(
+            demo_stage_heatmap = stage_heatmap_np[stage][0, :, :, 0:FLAGS.joints].reshape(    
                 (FLAGS.hmap_size, FLAGS.hmap_size, FLAGS.joints))
             demo_stage_heatmap = cv2.resize(demo_stage_heatmap, (test_img.shape[1], test_img.shape[0]))
             demo_stage_heatmap = np.amax(demo_stage_heatmap, axis=2)
@@ -339,7 +358,7 @@ def visualize_result(test_img, FLAGS, stage_heatmap_np, kalman_filter_array):
         last_heatmap = stage_heatmap_np[len(stage_heatmap_np) - 1][0, :, :, 0:FLAGS.joints].reshape(
             (FLAGS.hmap_size, FLAGS.hmap_size, FLAGS.joints))
         last_heatmap = cv2.resize(last_heatmap, (test_img.shape[1], test_img.shape[0]))
-    print('hm resize time %f' % (time.time() - t1))
+    #print('hm resize time %f' % (time.time() - t1))
 
     t1 = time.time()
     joint_coord_set = np.zeros((FLAGS.joints, 2))
@@ -390,31 +409,129 @@ def visualize_result(test_img, FLAGS, stage_heatmap_np, kalman_filter_array):
                     joint_color = map(lambda x: x + 35 * (joint_num % 4), joint_color_code[color_code_num])
 
                 cv2.circle(test_img, center=(joint_coord[1], joint_coord[0]), radius=3, color=joint_color, thickness=-1)
-    print('plot joint time %f' % (time.time() - t1))
+    #print('plot joint time %f' % (time.time() - t1))
 
     t1 = time.time()
     # Plot limb colors
+    t = 0
+
+    limbCoords = []
+    origen = (0,0)
     for limb_num in range(len(limbs)):
 
         x1 = joint_coord_set[limbs[limb_num][0], 0]
         y1 = joint_coord_set[limbs[limb_num][0], 1]
         x2 = joint_coord_set[limbs[limb_num][1], 0]
         y2 = joint_coord_set[limbs[limb_num][1], 1]
+        if limb_num == 0: origen = (x1,y1)
+
         length = ((x1 - x2) ** 2 + (y1 - y2) ** 2) ** 0.5
         if length < 150 and length > 5:
             deg = math.degrees(math.atan2(x1 - x2, y1 - y2))
+            if (int(x1),int(y1)) not in limbCoords:limbCoords.append((int(x1),int(y1)))
+            if (int(x2),int(y2)) not in limbCoords:limbCoords.append((int(x2),int(y2)))
             polygon = cv2.ellipse2Poly((int((y1 + y2) / 2), int((x1 + x2) / 2)),
                                        (int(length / 2), 3),
                                        int(deg),
                                        0, 360, 1)
+            originPlot = cv2.ellipse2Poly((int(origen[1]), int(origen[0])), (10,3) ,90, 0, 360, 1)            
             color_code_num = limb_num // 4
             if PYTHON_VERSION == 3:
                 limb_color = list(map(lambda x: x + 35 * (limb_num % 4), joint_color_code[color_code_num]))
             else:
                 limb_color = map(lambda x: x + 35 * (limb_num % 4), joint_color_code[color_code_num])
 
+
             cv2.fillConvexPoly(test_img, polygon, color=limb_color)
-    print('plot limb time %f' % (time.time() - t1))
+            cv2.fillConvexPoly(test_img, originPlot, color=(0,0,255))
+
+    #print('plot limb time %f' % (time.time() - t1))
+    def getRatio(l):
+        def truncate(number, digits) -> float:
+            stepper = 10.0 ** digits
+            return math.trunc(stepper * number) / stepper        
+        def chunks(lst, n):
+            """Yield successive n-sized chunks from lst."""
+            for i in range(0, len(lst), n):
+                yield lst[i:i + n]
+
+        def distance(a,b):
+            return int(((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2) ** 0.5)
+        
+        def percentage(x):
+            res = ''.join(list(x for x in str(x) if x not in ('.','0')))
+            return int(str(res)[0:2])
+        thumbCoords = l[1:5]
+        limbCoords = [x for x in chunks(l[5:],4)]
+        res = []
+        try:
+            first = l[0]
+
+            #Dedos normales
+            limb = limbCoords[0]
+            B = distance(first,limb[0])*1
+            L = distance(limb[0],limb[3])
+            res.append(truncate(L/B,2))
+            #Dedo dos
+            limb = limbCoords[1]
+            B = distance(first,limb[0])*1.15
+            L = distance(limb[0],limb[3])
+            res.append(truncate(L/B,2))
+            #Dedo tres
+            limb = limbCoords[2]
+            B = distance(first,limb[0])*1.3
+            L = distance(limb[0],limb[3])
+            res.append(truncate(L/B,2))
+            #Dedo cuatro
+            limb = limbCoords[3]
+            B = distance(first,limb[0])*1.2
+            L = distance(limb[0],limb[3])
+            res.append(truncate(L/B,2))
+
+
+            #Doblez del pulgar
+            B = distance(first,thumbCoords[0])*1.8
+            L = distance(thumbCoords[0],thumbCoords[3])
+            res.append(truncate(L/B,2)-0.5)
+            #Dos metricas del pulgar
+            P = distance(thumbCoords[2],limbCoords[0][0])*1.2
+            D = distance(limbCoords[0][0],limbCoords[3][0])
+            res.append(truncate(P/D,2))
+
+
+        except:first =None
+        output = ""
+
+        res2 = []
+        if len(res) == 6:
+          res = [int(x*100) for x in res]
+          for i in res:
+            if i > 99:
+              res2.append(99)
+            elif i < 0:
+              res2.append(0)
+            else:
+              res2.append(i)
+
+          for x in res2: 
+            if 99-x < 10: output += '0'+str(99-x)
+            else: output += str(99-x)
+            output += ' '
+          #output is now a str of values from 99-n
+          
+          out = re.sub(' ','',''.join(str(res2))[1:len(str(res2))-1])
+
+          
+          output = '<'+output+'>'+'\n'
+          #arduino.write(output.encode())
+
+          #ax1.clear()
+          #ax1.plot(t,res2)
+          memo.write(out+'\n')
+          plt.plot(res2)
+          plt.
+
+    getRatio(limbCoords)
 
     if FLAGS.DEMO_TYPE == 'MULTI':
         upper_img = np.concatenate((demo_stage_heatmaps[0], demo_stage_heatmaps[1], demo_stage_heatmaps[2]), axis=1)
