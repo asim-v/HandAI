@@ -13,19 +13,17 @@ def finduino():
       break
     except :pass
 
-def tester():
-	return "<"+str(random.randrange(10))+str(random.randrange(10))+str(random.randrange(10))+str(random.randrange(10))+str(random.randrange(10))+">"+"/n"
+
     
 arduino = finduino()
 
+o = "<90990>\n"
+i = "<09009>\n"
 
-o = "<09990>\n"
-i = "<90009>\n"
+abierto= "000000000000>\n"
+cerrado = "999999999999>\n"
 
-t = "<90990>\n"
-
-print(t.encode())
-arduino.write(t.encode())
+arduino.write(abierto.encode())
 time.sleep(1)
 
 print ("Done.")

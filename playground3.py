@@ -15,3 +15,5 @@ yhat = savgol_filter(y, 51, 3) # window size 51, polynomial order 3
 plt.plot(x,y)
 plt.plot(x,yhat, color='red')
 plt.show()
+
+

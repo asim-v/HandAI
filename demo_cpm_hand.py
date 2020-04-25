@@ -19,13 +19,14 @@ import re
 style.use('fivethirtyeight')
 fig = plt.figure()
 ax1 = fig.add_subplot(1,1,1)
+mem = open('mem.txt','w+')
 
 """Parámetros
 """
 FLAGS = tf.app.flags.FLAGS
 tf.app.flags.DEFINE_string('DEMO_TYPE',
                            default_value='MULTI',
-                           # default_value='SINGLE',
+                           # default_value='SINGLE',q
                            docstring='MULTI: show multiple stage,'
                                      'SINGLE: only last stage,'
                                      'HM: show last stage heatmap,'
@@ -103,8 +104,6 @@ def finduino():
     except :pass
 
 arduino = finduino()
-memo = open('mem.txt','w+')
-tempo = 0
 
 def main(argv):
     tf_device = '/gpu:0'
@@ -197,6 +196,7 @@ def main(argv):
                 demo_img = visualize_result(test_img, FLAGS, stage_heatmap_np, kalman_filter_array)
                 cv2.imshow('demo_img', demo_img.astype(np.uint8))
                 if cv2.waitKey(0) == ord('q'): 
+                    mem.close()
                     arduino.close()
                     break
                 #print('fps: %.2f' % (1 / (time.time() - t1)))
@@ -446,6 +446,31 @@ def visualize_result(test_img, FLAGS, stage_heatmap_np, kalman_filter_array):
             cv2.fillConvexPoly(test_img, originPlot, color=(0,0,255))
 
     #print('plot limb time %f' % (time.time() - t1))
+    def sendData():
+      try:
+        file = open('mem.txt','r').read()
+        print(file)
+        res = []
+        l = [x.split(',') for x in [i for i in file.split('\n')]] #Separa nuevas lineas y separa las comas
+        l = l[:len(l)-1] #Elimina el ultimo valor generado vacio
+        for m in l: #Convierte los valores en numeros
+          L = []
+          for n in m: L.append(int(n))
+          res.append(L)
+
+        res = np.array(res)
+        res = np.transpose(res)
+
+        out = []
+        print(res)
+        for x in range(6):
+          unfiltered = res[x]
+          sg_filtered = ss.savgol_filter(unfiltered,7,3)
+          out.append(sg_filtered[-1])
+        print(out)
+      except IndexError:print('IndexError')
+      
+
     def getRatio(l):
         def truncate(number, digits) -> float:
             stepper = 10.0 ** digits
@@ -516,22 +541,35 @@ def visualize_result(test_img, FLAGS, stage_heatmap_np, kalman_filter_array):
           for x in res2: 
             if 99-x < 10: output += '0'+str(99-x)
             else: output += str(99-x)
-            output += ' '
           #output is now a str of values from 99-n
+          output = output+'>'+'\n'     
           
-          out = re.sub(' ','',''.join(str(res2))[1:len(str(res2))-1])
+          out = re.sub(' ','',''.join(str(res2))[1:len(str(res2))-1])#Representacion visual del data
 
-          
-          output = '<'+output+'>'+'\n'
-          #arduino.write(output.encode())
+          # def scroll():
+          #   mem.seek(0)
+          #   file = mem.read()
+          #   res = []
+          #   l = [x.split(',') for x in [i for i in file.split('\n')]] #Separa nuevas lineas y separa las comas
+          #   l = l[:len(l)-1] #Elimina el ultimo valor generado vacio
+          #   for m in l: #Convierte los valores en numeros
+          #     L = []
+          #     for n in m: L.append(int(n))
+          #     res.append(L)
+          #   res = str(res[1:])
+          #   print(res)
+          #   res = re.sub('[','',res)
+          #   res = re.sub(']','\n',res)
+          #   print(res)
 
-          #ax1.clear()
-          #ax1.plot(t,res2)
-          memo.write(out+'\n')
-          plt.plot(res2)
-          plt.
+          # mem.seek(0)
+          # if mem.read().count('\n') >= 10: 
+          #   scroll()  
+          arduino.write(output.encode())
 
-    getRatio(limbCoords)
+          return output
+
+    output = getRatio(limbCoords)
 
     if FLAGS.DEMO_TYPE == 'MULTI':
         upper_img = np.concatenate((demo_stage_heatmaps[0], demo_stage_heatmaps[1], demo_stage_heatmaps[2]), axis=1)
